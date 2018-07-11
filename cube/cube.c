@@ -24,6 +24,8 @@
  * Author: Tony Barbour <tony@LunarG.com>
  * Author: Bill Hollings <bill.hollings@brenwill.com>
  */
+// Enable experimental code
+#define kws
 
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -297,6 +299,10 @@ typedef struct {
     VkDeviceMemory uniform_memory;
     VkFramebuffer framebuffer;
     VkDescriptorSet descriptor_set;
+#if defined(kws)
+    VkDescriptorSet descriptor_set_debug;
+    VkBuffer debug_buffer;
+#endif
 } SwapchainImageResources;
 
 struct demo {
@@ -408,6 +414,9 @@ struct demo {
     VkCommandBuffer cmd;  // Buffer for initialization commands
     VkPipelineLayout pipeline_layout;
     VkDescriptorSetLayout desc_layout;
+#if defined(kws)
+    VkDescriptorSetLayout desc_layout_debug;
+#endif
     VkPipelineCache pipelineCache;
     VkRenderPass render_pass;
     VkPipeline pipeline;
@@ -424,6 +433,9 @@ struct demo {
     VkShaderModule frag_shader_module;
 
     VkDescriptorPool desc_pool;
+#if defined(kws)
+    VkDescriptorPool desc_pool_debug;
+#endif
 
     bool quit;
     int32_t curFrame;
@@ -1054,6 +1066,10 @@ static void demo_draw(struct demo *demo) {
     submit_info.pSignalSemaphores = &demo->draw_complete_semaphores[demo->frame_index];
     err = vkQueueSubmit(demo->graphics_queue, 1, &submit_info, demo->fences[demo->frame_index]);
     assert(!err);
+#if defined(kws)
+    err = vkQueueWaitIdle(demo->graphics_queue);
+    assert(!err);
+#endif
 
     if (demo->separate_present_queue) {
         // If we are using separate queues, change image ownership to the
@@ -1819,9 +1835,61 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
     };
     VkResult U_ASSERT_ONLY err;
 
+#if defined(kwsOFF)  // Doesn't seem to work on older drivers.
+    // Just trying this out.
+    VkDescriptorSetLayoutSupport support = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT,
+        .pNext = NULL,
+        .supported = 0
+    };
+    vkGetDescriptorSetLayoutSupport(demo->device, &descriptor_layout, &support);
+    if (!support.supported) {
+        assert(0);
+    }
+#endif
+
     err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout, NULL, &demo->desc_layout);
     assert(!err);
 
+#if defined(kws)
+    // Simulate what would happen in the layers to add a binding to the layout
+
+    const VkDescriptorSetLayoutBinding layout_bindings_debug[1] = {
+        [0] =
+            {
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .pImmutableSamplers = NULL,
+            },
+    };
+
+    const VkDescriptorSetLayoutCreateInfo descriptor_layout_debug = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = NULL,
+        .bindingCount = 1,
+        .pBindings = layout_bindings_debug,
+    };
+
+    err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout_debug, NULL, &demo->desc_layout_debug);
+    assert(!err);
+#endif
+
+#if defined(kws)
+    VkDescriptorSetLayout layouts[2];
+    layouts[0] = demo->desc_layout;
+    layouts[1] = demo->desc_layout_debug;
+    const VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pNext = NULL,
+        .setLayoutCount = 2,
+        .pSetLayouts = layouts,
+    };
+
+    err = vkCreatePipelineLayout(demo->device, &pPipelineLayoutCreateInfo, NULL, &demo->pipeline_layout);
+    assert(!err);
+#else
     const VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = NULL,
@@ -1831,6 +1899,8 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
 
     err = vkCreatePipelineLayout(demo->device, &pPipelineLayoutCreateInfo, NULL, &demo->pipeline_layout);
     assert(!err);
+#endif
+
 }
 
 static void demo_prepare_render_pass(struct demo *demo) {
@@ -2077,6 +2147,28 @@ static void demo_prepare_descriptor_pool(struct demo *demo) {
 
     err = vkCreateDescriptorPool(demo->device, &descriptor_pool, NULL, &demo->desc_pool);
     assert(!err);
+#if defined(kws)
+    {
+        const VkDescriptorPoolSize type_counts[1] = {
+            [0] =
+                {
+                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .descriptorCount = demo->swapchainImageCount,
+                },
+        };
+        const VkDescriptorPoolCreateInfo descriptor_pool = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .pNext = NULL,
+            .maxSets = demo->swapchainImageCount,
+            .poolSizeCount = 1,
+            .pPoolSizes = type_counts,
+        };
+        VkResult U_ASSERT_ONLY err;
+
+        err = vkCreateDescriptorPool(demo->device, &descriptor_pool, NULL, &demo->desc_pool_debug);
+        assert(!err);
+    }
+#endif
 }
 
 static void demo_prepare_descriptor_set(struct demo *demo) {
@@ -2122,6 +2214,39 @@ static void demo_prepare_descriptor_set(struct demo *demo) {
         writes[1].dstSet = demo->swapchain_image_resources[i].descriptor_set;
         vkUpdateDescriptorSets(demo->device, 2, writes, 0, NULL);
     }
+
+#if defined(kws)
+    {
+        VkDescriptorSetAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                                                  .pNext = NULL,
+                                                  .descriptorPool = demo->desc_pool_debug,
+                                                  .descriptorSetCount = 1,
+                                                  .pSetLayouts = &demo->desc_layout_debug};
+
+        VkDescriptorBufferInfo buffer_info;
+        buffer_info.offset = 0;
+        buffer_info.range = 1024;
+
+        memset(&writes, 0, sizeof(writes));
+
+        writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[0].descriptorCount = 1;
+        writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[0].pBufferInfo = &buffer_info;
+
+        // TODO kws
+        // Need to allocate the debug_buffer.
+        // Is it neccessary to have one for each swapchain buffer?
+        for (unsigned int i = 0; i < demo->swapchainImageCount; i++) {
+            err = vkAllocateDescriptorSets(demo->device, &alloc_info, &demo->swapchain_image_resources[i].descriptor_set_debug);
+            assert(!err);
+            buffer_info.buffer = demo->swapchain_image_resources[i].debug_buffer;
+            buffer_info.buffer = (VkBuffer)123456; // TODO
+            writes[0].dstSet = demo->swapchain_image_resources[i].descriptor_set_debug;
+            vkUpdateDescriptorSets(demo->device, 1, writes, 0, NULL);
+        }
+    }
+#endif
 }
 
 static void demo_prepare_framebuffers(struct demo *demo) {
@@ -2275,6 +2400,9 @@ static void demo_cleanup(struct demo *demo) {
         vkDestroyRenderPass(demo->device, demo->render_pass, NULL);
         vkDestroyPipelineLayout(demo->device, demo->pipeline_layout, NULL);
         vkDestroyDescriptorSetLayout(demo->device, demo->desc_layout, NULL);
+#if defined(kws)
+        vkDestroyDescriptorSetLayout(demo->device, demo->desc_layout_debug, NULL);
+#endif
 
         for (i = 0; i < DEMO_TEXTURE_COUNT; i++) {
             vkDestroyImageView(demo->device, demo->textures[i].view, NULL);
@@ -2358,6 +2486,9 @@ static void demo_resize(struct demo *demo) {
     vkDestroyRenderPass(demo->device, demo->render_pass, NULL);
     vkDestroyPipelineLayout(demo->device, demo->pipeline_layout, NULL);
     vkDestroyDescriptorSetLayout(demo->device, demo->desc_layout, NULL);
+#if defined(kws)
+    vkDestroyDescriptorSetLayout(demo->device, demo->desc_layout_debug, NULL);
+#endif
 
     for (i = 0; i < DEMO_TEXTURE_COUNT; i++) {
         vkDestroyImageView(demo->device, demo->textures[i].view, NULL);
