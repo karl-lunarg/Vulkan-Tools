@@ -305,6 +305,7 @@ typedef struct {
 #if defined(kws)
     VkDescriptorSet descriptor_set_debug;
     VkBuffer debug_buffer;
+    VkDeviceMemory debug_memory;
 #endif
 } SwapchainImageResources;
 
@@ -777,8 +778,17 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
     }
 
     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, demo->pipeline);
+#if defined(kws)
+    VkDescriptorSet sets[2] = {
+        demo->swapchain_image_resources[demo->current_buffer].descriptor_set,
+        demo->swapchain_image_resources[demo->current_buffer].descriptor_set_debug
+    };
+    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, demo->pipeline_layout, 0, 2,
+                            sets, 0, NULL);
+#else
     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, demo->pipeline_layout, 0, 1,
                             &demo->swapchain_image_resources[demo->current_buffer].descriptor_set, 0, NULL);
+#endif
     VkViewport viewport;
     memset(&viewport, 0, sizeof(viewport));
     viewport.height = (float)demo->height;
@@ -834,7 +844,6 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
                                                         .dstQueueFamilyIndex = demo->present_queue_family_index,
                                                         .image = demo->swapchain_image_resources[demo->current_buffer].image,
                                                         .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
-
         vkCmdPipelineBarrier(cmd_buf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0,
                              NULL, 1, &image_ownership_barrier);
     }
@@ -1073,6 +1082,16 @@ static void demo_draw(struct demo *demo) {
 #if defined(kws)
     err = vkQueueWaitIdle(demo->graphics_queue);
     assert(!err);
+    {
+        void* pData;
+        err = vkMapMemory(demo->device, demo->swapchain_image_resources[demo->current_buffer].debug_memory,
+            0, VK_WHOLE_SIZE, 0, (void **)&pData);
+        assert(!err);
+        int* i = (int*)pData;
+        float* f = (float*)pData;
+        printf("%f %f %f %f  %d\n", f[0], f[1], f[2], f[3], i[4]);
+        vkUnmapMemory(demo->device, demo->swapchain_image_resources[demo->current_buffer].debug_memory);
+    }
 #endif
 
     if (demo->separate_present_queue) {
@@ -1756,6 +1775,58 @@ void demo_prepare_cube_data_buffers(struct demo *demo) {
     }
 }
 
+#if defined(kws)
+void demo_prepare_debug_data_buffers(struct demo *demo) {
+    VkBufferCreateInfo buf_info;
+    VkMemoryRequirements mem_reqs;
+    VkMemoryAllocateInfo mem_alloc;
+    uint8_t *pData;
+    VkResult U_ASSERT_ONLY err;
+    bool U_ASSERT_ONLY pass;
+
+    memset(&buf_info, 0, sizeof(buf_info));
+    buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    buf_info.size = 1024;
+
+    for (unsigned int i = 0; i < demo->swapchainImageCount; i++) {
+        err = vkCreateBuffer(demo->device, &buf_info, NULL, &demo->swapchain_image_resources[i].debug_buffer);
+        assert(!err);
+
+        vkGetBufferMemoryRequirements(demo->device, demo->swapchain_image_resources[i].debug_buffer, &mem_reqs);
+
+        mem_alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        mem_alloc.pNext = NULL;
+        mem_alloc.allocationSize = mem_reqs.size;
+        mem_alloc.memoryTypeIndex = 0;
+
+        pass = memory_type_from_properties(demo, mem_reqs.memoryTypeBits,
+                                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                           &mem_alloc.memoryTypeIndex);
+        assert(pass);
+
+        err = vkAllocateMemory(demo->device, &mem_alloc, NULL, &demo->swapchain_image_resources[i].debug_memory);
+        assert(!err);
+
+        err = vkMapMemory(demo->device, demo->swapchain_image_resources[i].debug_memory, 0, VK_WHOLE_SIZE, 0, (void **)&pData);
+        assert(!err);
+
+        memset(pData, 0x00, 1024);
+        float* f = (float*)pData;
+        f[0] = 0.0f; // red
+        f[1] = 1.0f;
+        f[2] = 1.0f;
+        f[3] = 1.0f; // alpha
+
+        vkUnmapMemory(demo->device, demo->swapchain_image_resources[i].debug_memory);
+
+        err = vkBindBufferMemory(demo->device, demo->swapchain_image_resources[i].debug_buffer,
+                                 demo->swapchain_image_resources[i].debug_memory, 0);
+        assert(!err);
+    }
+}
+#endif
+
 static void demo_prepare_descriptor_layout(struct demo *demo) {
     const VkDescriptorSetLayoutBinding layout_bindings[2] = {
         [0] =
@@ -1783,7 +1854,7 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
     };
     VkResult U_ASSERT_ONLY err;
 
-#if defined(kwsOFF)  // Doesn't seem to work on older drivers.
+#if defined(kws)
     // Just trying this out.
     VkDescriptorSetLayoutSupport support = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT,
@@ -2182,14 +2253,12 @@ static void demo_prepare_descriptor_set(struct demo *demo) {
         writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writes[0].pBufferInfo = &buffer_info;
 
-        // TODO kws
         // Need to allocate the debug_buffer.
         // Is it neccessary to have one for each swapchain buffer?
         for (unsigned int i = 0; i < demo->swapchainImageCount; i++) {
             err = vkAllocateDescriptorSets(demo->device, &alloc_info, &demo->swapchain_image_resources[i].descriptor_set_debug);
             assert(!err);
             buffer_info.buffer = demo->swapchain_image_resources[i].debug_buffer;
-            buffer_info.buffer = (VkBuffer)123456; // TODO
             writes[0].dstSet = demo->swapchain_image_resources[i].descriptor_set_debug;
             vkUpdateDescriptorSets(demo->device, 1, writes, 0, NULL);
         }
@@ -2262,6 +2331,9 @@ static void demo_prepare(struct demo *demo) {
     demo_prepare_depth(demo);
     demo_prepare_textures(demo);
     demo_prepare_cube_data_buffers(demo);
+#if defined(kws)
+    demo_prepare_debug_data_buffers(demo);
+#endif
 
     demo_prepare_descriptor_layout(demo);
     demo_prepare_render_pass(demo);
@@ -2342,6 +2414,9 @@ static void demo_cleanup(struct demo *demo) {
             vkDestroyFramebuffer(demo->device, demo->swapchain_image_resources[i].framebuffer, NULL);
         }
         vkDestroyDescriptorPool(demo->device, demo->desc_pool, NULL);
+#if defined(kws)
+        vkDestroyDescriptorPool(demo->device, demo->desc_pool_debug, NULL);
+#endif
 
         vkDestroyPipeline(demo->device, demo->pipeline, NULL);
         vkDestroyPipelineCache(demo->device, demo->pipelineCache, NULL);
@@ -2369,6 +2444,10 @@ static void demo_cleanup(struct demo *demo) {
             vkFreeCommandBuffers(demo->device, demo->cmd_pool, 1, &demo->swapchain_image_resources[i].cmd);
             vkDestroyBuffer(demo->device, demo->swapchain_image_resources[i].uniform_buffer, NULL);
             vkFreeMemory(demo->device, demo->swapchain_image_resources[i].uniform_memory, NULL);
+#if defined(kws)
+            vkDestroyBuffer(demo->device, demo->swapchain_image_resources[i].debug_buffer, NULL);
+            vkFreeMemory(demo->device, demo->swapchain_image_resources[i].debug_memory, NULL);
+#endif
         }
         free(demo->swapchain_image_resources);
         free(demo->queue_props);
@@ -2429,6 +2508,9 @@ static void demo_resize(struct demo *demo) {
         vkDestroyFramebuffer(demo->device, demo->swapchain_image_resources[i].framebuffer, NULL);
     }
     vkDestroyDescriptorPool(demo->device, demo->desc_pool, NULL);
+#if defined(kws)
+    vkDestroyDescriptorPool(demo->device, demo->desc_pool_debug, NULL);
+#endif
 
     vkDestroyPipeline(demo->device, demo->pipeline, NULL);
     vkDestroyPipelineCache(demo->device, demo->pipelineCache, NULL);
@@ -2455,6 +2537,10 @@ static void demo_resize(struct demo *demo) {
         vkFreeCommandBuffers(demo->device, demo->cmd_pool, 1, &demo->swapchain_image_resources[i].cmd);
         vkDestroyBuffer(demo->device, demo->swapchain_image_resources[i].uniform_buffer, NULL);
         vkFreeMemory(demo->device, demo->swapchain_image_resources[i].uniform_memory, NULL);
+#if defined(kws)
+        vkDestroyBuffer(demo->device, demo->swapchain_image_resources[i].uniform_buffer, NULL);
+        vkFreeMemory(demo->device, demo->swapchain_image_resources[i].uniform_memory, NULL);
+#endif
     }
     vkDestroyCommandPool(demo->device, demo->cmd_pool, NULL);
     demo->cmd_pool = VK_NULL_HANDLE;
@@ -3393,6 +3479,13 @@ static void demo_create_device(struct demo *demo) {
         .ppEnabledExtensionNames = (const char *const *)demo->extension_names,
         .pEnabledFeatures = NULL,  // If specific features are required, pass them in here
     };
+
+#if defined(kws)
+    VkPhysicalDeviceFeatures features = {};
+    features.fragmentStoresAndAtomics = VK_TRUE;
+    device.pEnabledFeatures = &features;
+#endif
+
     if (demo->separate_present_queue) {
         queues[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         queues[1].pNext = NULL;
