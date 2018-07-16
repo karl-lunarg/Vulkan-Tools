@@ -26,6 +26,7 @@
  */
 // Enable experimental code
 #define kws
+//#define USE_DESCRIPTOR_INDEXING_EXTENSION
 
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -1879,6 +1880,107 @@ void demo_prepare_debug_data_buffers(struct demo *demo) {
 }
 #endif
 
+#if defined(kws)
+static void demo_prepare_descriptor_layout(struct demo *demo) {
+    const VkDescriptorSetLayoutBinding layout_bindings[2] = {
+        [0] =
+            {
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                .pImmutableSamplers = NULL,
+            },
+        [1] =
+            {
+                .binding = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = DEMO_TEXTURE_COUNT,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .pImmutableSamplers = NULL,
+            },
+    };
+#if defined(USE_DESCRIPTOR_INDEXING_EXTENSION)
+    const VkDescriptorBindingFlagsEXT flags[2] = {
+        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT, 
+        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT
+        };
+    const VkDescriptorSetLayoutBindingFlagsCreateInfoEXT binding_flags = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT,
+        .pNext = NULL,
+        .bindingCount = 2,
+        .pBindingFlags = flags
+    };
+#endif
+    const VkDescriptorSetLayoutCreateInfo descriptor_layout = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+#if defined(USE_DESCRIPTOR_INDEXING_EXTENSION)
+        .pNext = &binding_flags,
+        .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT,
+#else
+        .pNext = NULL,
+        .flags = 0,
+#endif
+        .bindingCount = 2,
+        .pBindings = layout_bindings,
+    };
+    VkResult U_ASSERT_ONLY err;
+
+    // Just trying this out.
+    VkDescriptorSetVariableDescriptorCountLayoutSupportEXT count = {};
+    count.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT_EXT;
+    count.maxVariableDescriptorCount = 42;
+    VkDescriptorSetLayoutSupport support = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT,
+        .pNext = &count,
+        .supported = 0
+    };
+    vkGetDescriptorSetLayoutSupport(demo->device, &descriptor_layout, &support);
+    if (!support.supported) {
+        assert(0);
+    }
+    printf("%d\n", count.maxVariableDescriptorCount);
+
+    err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout, NULL, &demo->desc_layout);
+    assert(!err);
+
+    // Define our debug descriptor set.
+
+    const VkDescriptorSetLayoutBinding layout_bindings_debug[1] = {
+        [0] =
+            {
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .pImmutableSamplers = NULL,
+            },
+    };
+
+    const VkDescriptorSetLayoutCreateInfo descriptor_layout_debug = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = NULL,
+        .bindingCount = 1,
+        .pBindings = layout_bindings_debug,
+    };
+
+    err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout_debug, NULL, &demo->desc_layout_debug);
+    assert(!err);
+
+    VkDescriptorSetLayout layouts[2];
+    layouts[0] = demo->desc_layout;
+    layouts[1] = demo->desc_layout_debug;
+    const VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pNext = NULL,
+        .setLayoutCount = 2,
+        .pSetLayouts = layouts,
+    };
+
+    err = vkCreatePipelineLayout(demo->device, &pPipelineLayoutCreateInfo, NULL, &demo->pipeline_layout);
+    assert(!err);
+}
+#else
 static void demo_prepare_descriptor_layout(struct demo *demo) {
     const VkDescriptorSetLayoutBinding layout_bindings[2] = {
         [0] =
@@ -1906,61 +2008,9 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
     };
     VkResult U_ASSERT_ONLY err;
 
-#if defined(kws)
-    // Just trying this out.
-    VkDescriptorSetLayoutSupport support = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT,
-        .pNext = NULL,
-        .supported = 0
-    };
-    vkGetDescriptorSetLayoutSupport(demo->device, &descriptor_layout, &support);
-    if (!support.supported) {
-        assert(0);
-    }
-#endif
-
     err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout, NULL, &demo->desc_layout);
     assert(!err);
 
-#if defined(kws)
-    // Simulate what would happen in the layers to add a binding to the layout
-
-    const VkDescriptorSetLayoutBinding layout_bindings_debug[1] = {
-        [0] =
-            {
-                .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-                .pImmutableSamplers = NULL,
-            },
-    };
-
-    const VkDescriptorSetLayoutCreateInfo descriptor_layout_debug = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = NULL,
-        .bindingCount = 1,
-        .pBindings = layout_bindings_debug,
-    };
-
-    err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout_debug, NULL, &demo->desc_layout_debug);
-    assert(!err);
-#endif
-
-#if defined(kws)
-    VkDescriptorSetLayout layouts[2];
-    layouts[0] = demo->desc_layout;
-    layouts[1] = demo->desc_layout_debug;
-    const VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .pNext = NULL,
-        .setLayoutCount = 2,
-        .pSetLayouts = layouts,
-    };
-
-    err = vkCreatePipelineLayout(demo->device, &pPipelineLayoutCreateInfo, NULL, &demo->pipeline_layout);
-    assert(!err);
-#else
     const VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = NULL,
@@ -1970,9 +2020,8 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
 
     err = vkCreatePipelineLayout(demo->device, &pPipelineLayoutCreateInfo, NULL, &demo->pipeline_layout);
     assert(!err);
-#endif
-
 }
+#endif
 
 static void demo_prepare_render_pass(struct demo *demo) {
     // The initial layout for the color and depth attachments will be LAYOUT_UNDEFINED
@@ -2305,8 +2354,6 @@ static void demo_prepare_descriptor_set(struct demo *demo) {
         writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writes[0].pBufferInfo = &buffer_info;
 
-        // Need to allocate the debug_buffer.
-        // Is it neccessary to have one for each swapchain buffer?
         for (unsigned int i = 0; i < demo->swapchainImageCount; i++) {
             err = vkAllocateDescriptorSets(demo->device, &alloc_info, &demo->swapchain_image_resources[i].descriptor_set_debug);
             assert(!err);
@@ -3235,6 +3282,11 @@ static void demo_init_vk(struct demo *demo) {
                     demo->extension_names[demo->enabled_extension_count++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
                 }
             }
+#if defined(kws) && defined(USE_DESCRIPTOR_INDEXING_EXTENSION)
+            if (!strcmp(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME, instance_extensions[i].extensionName)) {
+                demo->extension_names[demo->enabled_extension_count++] = VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
+            }
+#endif
             assert(demo->enabled_extension_count < 64);
         }
 
@@ -3398,6 +3450,15 @@ static void demo_init_vk(struct demo *demo) {
                 swapchainExtFound = 1;
                 demo->extension_names[demo->enabled_extension_count++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
             }
+#if defined(kws) && defined(USE_DESCRIPTOR_INDEXING_EXTENSION)
+
+            if (!strcmp(VK_KHR_MAINTENANCE3_EXTENSION_NAME, device_extensions[i].extensionName)) {
+                demo->extension_names[demo->enabled_extension_count++] = VK_KHR_MAINTENANCE3_EXTENSION_NAME;
+            }
+            if (!strcmp(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME, device_extensions[i].extensionName)) {
+                demo->extension_names[demo->enabled_extension_count++] = VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME;
+            }
+#endif
             assert(demo->enabled_extension_count < 64);
         }
 
