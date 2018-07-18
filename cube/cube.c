@@ -66,7 +66,11 @@
 #define MILLION 1000000L
 #define BILLION 1000000000L
 
+#if defined(kws)
+#define DEMO_TEXTURE_COUNT 6
+#else
 #define DEMO_TEXTURE_COUNT 1
+#endif
 #define APP_SHORT_NAME "cube"
 #define APP_LONG_NAME "The Vulkan Cube Demo Program"
 
@@ -172,7 +176,11 @@ struct texture_object {
     int32_t tex_width, tex_height;
 };
 
+#if defined(kws)
+static char *tex_files[] = {"lunarg.ppm", "red", "green", "blue", "magenta", "cyan"};
+#else
 static char *tex_files[] = {"lunarg.ppm"};
+#endif
 
 static int validation_error = 0;
 
@@ -181,6 +189,9 @@ struct vktexcube_vs_uniform {
     float mvp[4][4];
     float position[12 * 3][4];
     float attr[12 * 3][4];
+#if defined(kws)
+    unsigned int texture_index[12 * 3][4];
+#endif
 };
 
 //--------------------------------------------------------------------------------------
@@ -780,6 +791,7 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
 
     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, demo->pipeline);
 #if defined(kws)
+    // Add an additional descriptor set for the debug buffer(s).
     VkDescriptorSet sets[2] = {
         demo->swapchain_image_resources[demo->current_buffer].descriptor_set,
         demo->swapchain_image_resources[demo->current_buffer].descriptor_set_debug
@@ -894,7 +906,12 @@ void demo_update_data_buffer(struct demo *demo) {
 
     // Rotate around the Y axis
     mat4x4_dup(Model, demo->model_matrix);
+#if defined(kws)
+    // Just so we can see all the faces of the cube
+    mat4x4_rotate(demo->model_matrix, Model, 1.0f, 1.0f, 0.0f, (float)degreesToRadians(demo->spin_angle));
+#else
     mat4x4_rotate(demo->model_matrix, Model, 0.0f, 1.0f, 0.0f, (float)degreesToRadians(demo->spin_angle));
+#endif
     mat4x4_mul(MVP, VP, demo->model_matrix);
 
     err = vkMapMemory(demo->device, demo->swapchain_image_resources[demo->current_buffer].uniform_memory, 0, VK_WHOLE_SIZE, 0,
@@ -1081,6 +1098,7 @@ static void demo_draw(struct demo *demo) {
     err = vkQueueSubmit(demo->graphics_queue, 1, &submit_info, demo->fences[demo->frame_index]);
     assert(!err);
 #if defined(kws)
+    // Look at the debug buffer
     err = vkQueueWaitIdle(demo->graphics_queue);
     assert(!err);
     {
@@ -1489,6 +1507,141 @@ static void demo_prepare_depth(struct demo *demo) {
     assert(!err);
 }
 
+#if defined(kws)
+/* Convert ppm image data from header file into RGBA texture image */
+#include "lunarg.ppm.h"
+bool loadTexture(const char *filename, uint8_t *rgba_data, VkSubresourceLayout *layout, int32_t *width, int32_t *height) {
+    if (strcmp(filename, "lunarg.ppm") == 0) {
+        char *cPtr;
+        cPtr = (char *)lunarg_ppm;
+        if ((unsigned char *)cPtr >= (lunarg_ppm + lunarg_ppm_len) || strncmp(cPtr, "P6\n", 3)) {
+            return false;
+        }
+        while (strncmp(cPtr++, "\n", 1))
+            ;
+        sscanf(cPtr, "%u %u", width, height);
+        if (rgba_data == NULL) {
+            return true;
+        }
+        while (strncmp(cPtr++, "\n", 1))
+            ;
+        if ((unsigned char *)cPtr >= (lunarg_ppm + lunarg_ppm_len) || strncmp(cPtr, "255\n", 4)) {
+            return false;
+        }
+        while (strncmp(cPtr++, "\n", 1))
+            ;
+        for (int y = 0; y < *height; y++) {
+            uint8_t *rowPtr = rgba_data;
+            for (int x = 0; x < *width; x++) {
+                memcpy(rowPtr, cPtr, 3);
+                rowPtr[3] = 255; /* Alpha of 1 */
+                rowPtr += 4;
+                cPtr += 3;
+            }
+            rgba_data += layout->rowPitch;
+        }
+        return true;
+    }
+    else if (strcmp(filename, "red") == 0) {
+        *width = 4;
+        *height = 4;
+        if (rgba_data == NULL) {
+            return true;
+        }
+        for (int y = 0; y < *height; y++) {
+            uint8_t *rowPtr = rgba_data;
+            for (int x = 0; x < *width; x++) {
+                rowPtr[0] = 255;
+                rowPtr[1] = 0;
+                rowPtr[2] = 0;
+                rowPtr[3] = 255; /* Alpha of 1 */
+                rowPtr += 4;
+            }
+            rgba_data += layout->rowPitch;
+        }
+        return true;
+    }
+    else if (strcmp(filename, "green") == 0) {
+        *width = 4;
+        *height = 4;
+        if (rgba_data == NULL) {
+            return true;
+        }
+        for (int y = 0; y < *height; y++) {
+            uint8_t *rowPtr = rgba_data;
+            for (int x = 0; x < *width; x++) {
+                rowPtr[0] = 0;
+                rowPtr[1] = 255;
+                rowPtr[2] = 0;
+                rowPtr[3] = 255; /* Alpha of 1 */
+                rowPtr += 4;
+            }
+            rgba_data += layout->rowPitch;
+        }
+        return true;
+    }
+    else if (strcmp(filename, "blue") == 0) {
+        *width = 4;
+        *height = 4;
+        if (rgba_data == NULL) {
+            return true;
+        }
+        for (int y = 0; y < *height; y++) {
+            uint8_t *rowPtr = rgba_data;
+            for (int x = 0; x < *width; x++) {
+                rowPtr[0] = 0;
+                rowPtr[1] = 0;
+                rowPtr[2] = 255;
+                rowPtr[3] = 255; /* Alpha of 1 */
+                rowPtr += 4;
+            }
+            rgba_data += layout->rowPitch;
+        }
+        return true;
+    }
+    else if (strcmp(filename, "magenta") == 0) {
+        *width = 4;
+        *height = 4;
+        if (rgba_data == NULL) {
+            return true;
+        }
+        for (int y = 0; y < *height; y++) {
+            uint8_t *rowPtr = rgba_data;
+            for (int x = 0; x < *width; x++) {
+                rowPtr[0] = 255;
+                rowPtr[1] = 0;
+                rowPtr[2] = 255;
+                rowPtr[3] = 255; /* Alpha of 1 */
+                rowPtr += 4;
+            }
+            rgba_data += layout->rowPitch;
+        }
+        return true;
+    }
+    else if (strcmp(filename, "cyan") == 0) {
+        *width = 4;
+        *height = 4;
+        if (rgba_data == NULL) {
+            return true;
+        }
+        for (int y = 0; y < *height; y++) {
+            uint8_t *rowPtr = rgba_data;
+            for (int x = 0; x < *width; x++) {
+                rowPtr[0] = 0;
+                rowPtr[1] = 255;
+                rowPtr[2] = 255;
+                rowPtr[3] = 255; /* Alpha of 1 */
+                rowPtr += 4;
+            }
+            rgba_data += layout->rowPitch;
+        }
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+#else
 /* Convert ppm image data from header file into RGBA texture image */
 #include "lunarg.ppm.h"
 bool loadTexture(const char *filename, uint8_t *rgba_data, VkSubresourceLayout *layout, int32_t *width, int32_t *height) {
@@ -1523,6 +1676,7 @@ bool loadTexture(const char *filename, uint8_t *rgba_data, VkSubresourceLayout *
     }
     return true;
 }
+#endif
 
 static void demo_prepare_texture_image(struct demo *demo, const char *filename, struct texture_object *tex_obj,
                                        VkImageTiling tiling, VkImageUsageFlags usage, VkFlags required_props) {
@@ -1737,6 +1891,14 @@ void demo_prepare_cube_data_buffers(struct demo *demo) {
         data.attr[i][1] = g_uv_buffer_data[2 * i + 1];
         data.attr[i][2] = 0;
         data.attr[i][3] = 0;
+#if defined(kws)
+        // because shaders index things with vec4 granularity, we need to match the stride.
+        // would be nice to figure out a way to index a "packed" int array.
+        data.texture_index[i][0] = i / 6;
+        data.texture_index[i][1] = 0;
+        data.texture_index[i][2] = 0;
+        data.texture_index[i][3] = 0;
+#endif
     }
 
     memset(&buf_info, 0, sizeof(buf_info));
@@ -1813,8 +1975,10 @@ void demo_prepare_debug_data_buffers(struct demo *demo) {
         assert(!err);
 
         memset(pData, 0x00, 1024);
+        // The fragment shader multiplies the fragment color by these factors.
+        // Just a way to test the "input" debug buffer.
         float* f = (float*)pData;
-        f[0] = 0.0f; // red
+        f[0] = 1.0f; // red
         f[1] = 1.0f;
         f[2] = 1.0f;
         f[3] = 1.0f; // alpha
@@ -1828,7 +1992,6 @@ void demo_prepare_debug_data_buffers(struct demo *demo) {
 }
 #endif
 
-#if defined(kws)
 static void demo_prepare_descriptor_layout(struct demo *demo) {
     const VkDescriptorSetLayoutBinding layout_bindings[2] = {
         [0] =
@@ -1848,52 +2011,50 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
                 .pImmutableSamplers = NULL,
             },
     };
-#if defined(USE_DESCRIPTOR_INDEXING_EXTENSION)
+    VkDescriptorSetLayoutCreateInfo descriptor_layout = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .bindingCount = 2,
+        .pBindings = layout_bindings,
+    };
+#if defined(kws) && defined(USE_DESCRIPTOR_INDEXING_EXTENSION)
     const VkDescriptorBindingFlagsEXT flags[2] = {
-        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT, 
+        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT,
         VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT
-        };
+    };
     const VkDescriptorSetLayoutBindingFlagsCreateInfoEXT binding_flags = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT,
         .pNext = NULL,
         .bindingCount = 2,
         .pBindingFlags = flags
     };
+    descriptor_layout.pNext = &binding_flags,
+    descriptor_layout.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT,
 #endif
-    const VkDescriptorSetLayoutCreateInfo descriptor_layout = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-#if defined(USE_DESCRIPTOR_INDEXING_EXTENSION)
-        .pNext = &binding_flags,
-        .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT,
-#else
-        .pNext = NULL,
-        .flags = 0,
-#endif
-        .bindingCount = 2,
-        .pBindings = layout_bindings,
-    };
     VkResult U_ASSERT_ONLY err;
 
+#if defined(kws)
     // Just trying this out.
-    VkDescriptorSetVariableDescriptorCountLayoutSupportEXT count = {};
-    count.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT_EXT;
-    count.maxVariableDescriptorCount = 42;
-    VkDescriptorSetLayoutSupport support = {
+    VkDescriptorSetVariableDescriptorCountLayoutSupportEXT layout_count = {};
+    layout_count.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT_EXT;
+    layout_count.maxVariableDescriptorCount = 42;
+    VkDescriptorSetLayoutSupport layout_support = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT,
-        .pNext = &count,
+        .pNext = &layout_count,
         .supported = 0
     };
-    vkGetDescriptorSetLayoutSupport(demo->device, &descriptor_layout, &support);
-    if (!support.supported) {
+    vkGetDescriptorSetLayoutSupport(demo->device, &descriptor_layout, &layout_support);
+    if (!layout_support.supported) {
         assert(0);
     }
-    printf("%d\n", count.maxVariableDescriptorCount);
-
+    printf("%d\n", layout_count.maxVariableDescriptorCount);
+#endif
     err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout, NULL, &demo->desc_layout);
     assert(!err);
 
+#if defined(kws)
     // Define our debug descriptor set.
-
     const VkDescriptorSetLayoutBinding layout_bindings_debug[1] = {
         [0] =
             {
@@ -1914,21 +2075,26 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
 
     err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout_debug, NULL, &demo->desc_layout_debug);
     assert(!err);
+#endif
 
     VkDescriptorSetLayout layouts[2];
+    int num_layouts = 1;
     layouts[0] = demo->desc_layout;
+#if defined(kws)
     layouts[1] = demo->desc_layout_debug;
+    num_layouts = 2;
+#endif
     const VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = NULL,
-        .setLayoutCount = 2,
+        .setLayoutCount = num_layouts,
         .pSetLayouts = layouts,
     };
 
     err = vkCreatePipelineLayout(demo->device, &pPipelineLayoutCreateInfo, NULL, &demo->pipeline_layout);
     assert(!err);
 }
-#else
+#if 0
 static void demo_prepare_descriptor_layout(struct demo *demo) {
     const VkDescriptorSetLayoutBinding layout_bindings[2] = {
         [0] =
@@ -3544,7 +3710,18 @@ static void demo_create_device(struct demo *demo) {
 #if defined(kws)
     VkPhysicalDeviceFeatures features = {};
     features.fragmentStoresAndAtomics = VK_TRUE;
+    // This one SHOULD be required, but the NVIDIA driver seems to work without it.
+    features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
     device.pEnabledFeatures = &features;
+#if 0
+    VkPhysicalDeviceDescriptorIndexingFeaturesEXT f = {};
+    f.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    f.shaderUniformBufferArrayNonUniformIndexing = VK_TRUE;
+    f.shaderUniformTexelBufferArrayNonUniformIndexing = VK_TRUE;
+    f.shaderUniformTexelBufferArrayDynamicIndexing = VK_TRUE;
+    f.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
+    device.pNext = &f;
+#endif
 #endif
 
     if (demo->separate_present_queue) {
