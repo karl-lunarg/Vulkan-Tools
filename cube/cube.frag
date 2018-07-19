@@ -21,7 +21,8 @@
 #version 430
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_ARB_shading_language_420pack : enable
-layout (set = 0, binding = 1) uniform sampler2D tex[6];
+layout (set = 0, binding = 1) uniform sampler samp;
+layout (set = 0, binding = 2) uniform texture2D tex[6];
 layout (set = 1, binding = 0) buffer debugBuffer_t
 {
     vec4 color[1];
@@ -40,7 +41,7 @@ void main() {
    vec3 dY = dFdy(frag_pos);
    vec3 normal = normalize(cross(dX,dY));
    float light = max(0.0, dot(lightDir, normal));
-   uFragColor = light * texture(tex[tex_ind], texcoord.xy);
+   uFragColor = light * texture(sampler2D(tex[tex_ind], samp), texcoord.xy);
    uFragColor = uFragColor * debugBuffer.color[0];
    atomicAdd(debugBuffer.count,1);
 }

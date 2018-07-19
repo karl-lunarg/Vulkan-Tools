@@ -1993,7 +1993,7 @@ void demo_prepare_debug_data_buffers(struct demo *demo) {
 #endif
 
 static void demo_prepare_descriptor_layout(struct demo *demo) {
-    const VkDescriptorSetLayoutBinding layout_bindings[2] = {
+    const VkDescriptorSetLayoutBinding layout_bindings[3] = {
         [0] =
             {
                 .binding = 0,
@@ -2005,7 +2005,15 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
         [1] =
             {
                 .binding = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .pImmutableSamplers = NULL,
+            },
+        [2] =
+            {
+                .binding = 2,
+                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                 .descriptorCount = DEMO_TEXTURE_COUNT,
                 .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
                 .pImmutableSamplers = NULL,
@@ -2015,7 +2023,7 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .pNext = NULL,
         .flags = 0,
-        .bindingCount = 2,
+        .bindingCount = 3,
         .pBindings = layout_bindings,
     };
 #if defined(kws) && defined(USE_DESCRIPTOR_INDEXING_EXTENSION)
@@ -2407,7 +2415,7 @@ static void demo_prepare_descriptor_pool(struct demo *demo) {
 
 static void demo_prepare_descriptor_set(struct demo *demo) {
     VkDescriptorImageInfo tex_descs[DEMO_TEXTURE_COUNT];
-    VkWriteDescriptorSet writes[2];
+    VkWriteDescriptorSet writes[3];
     VkResult U_ASSERT_ONLY err;
 
     VkDescriptorSetAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -2419,10 +2427,12 @@ static void demo_prepare_descriptor_set(struct demo *demo) {
     VkDescriptorBufferInfo buffer_info;
     buffer_info.offset = 0;
     buffer_info.range = sizeof(struct vktexcube_vs_uniform);
+    VkDescriptorImageInfo sampler_info = {};
+    sampler_info.sampler = demo->textures[0].sampler;
 
     memset(&tex_descs, 0, sizeof(tex_descs));
     for (unsigned int i = 0; i < DEMO_TEXTURE_COUNT; i++) {
-        tex_descs[i].sampler = demo->textures[i].sampler;
+        tex_descs[i].sampler = NULL; // demo->textures[i].sampler;
         tex_descs[i].imageView = demo->textures[i].view;
         tex_descs[i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     }
@@ -2430,15 +2440,22 @@ static void demo_prepare_descriptor_set(struct demo *demo) {
     memset(&writes, 0, sizeof(writes));
 
     writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[0].dstBinding = 0;
     writes[0].descriptorCount = 1;
     writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     writes[0].pBufferInfo = &buffer_info;
 
     writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     writes[1].dstBinding = 1;
-    writes[1].descriptorCount = DEMO_TEXTURE_COUNT;
-    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    writes[1].pImageInfo = tex_descs;
+    writes[1].descriptorCount = 1;
+    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    writes[1].pImageInfo = &sampler_info;
+
+    writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[2].dstBinding = 2;
+    writes[2].descriptorCount = DEMO_TEXTURE_COUNT;
+    writes[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    writes[2].pImageInfo = tex_descs;
 
     for (unsigned int i = 0; i < demo->swapchainImageCount; i++) {
         err = vkAllocateDescriptorSets(demo->device, &alloc_info, &demo->swapchain_image_resources[i].descriptor_set);
@@ -2446,7 +2463,8 @@ static void demo_prepare_descriptor_set(struct demo *demo) {
         buffer_info.buffer = demo->swapchain_image_resources[i].uniform_buffer;
         writes[0].dstSet = demo->swapchain_image_resources[i].descriptor_set;
         writes[1].dstSet = demo->swapchain_image_resources[i].descriptor_set;
-        vkUpdateDescriptorSets(demo->device, 2, writes, 0, NULL);
+        writes[2].dstSet = demo->swapchain_image_resources[i].descriptor_set;
+        vkUpdateDescriptorSets(demo->device, 3, writes, 0, NULL);
     }
 
 #if defined(kws)
