@@ -857,6 +857,7 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
                                                         .dstQueueFamilyIndex = demo->present_queue_family_index,
                                                         .image = demo->swapchain_image_resources[demo->current_buffer].image,
                                                         .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+
         vkCmdPipelineBarrier(cmd_buf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0,
                              NULL, 1, &image_ownership_barrier);
     }
@@ -1992,6 +1993,7 @@ void demo_prepare_debug_data_buffers(struct demo *demo) {
 }
 #endif
 
+#if defined(kws)
 static void demo_prepare_descriptor_layout(struct demo *demo) {
     const VkDescriptorSetLayoutBinding layout_bindings[2] = {
         [0] =
@@ -2018,7 +2020,7 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
         .bindingCount = 2,
         .pBindings = layout_bindings,
     };
-#if defined(kws) && defined(USE_DESCRIPTOR_INDEXING_EXTENSION)
+#if defined(USE_DESCRIPTOR_INDEXING_EXTENSION)
     const VkDescriptorBindingFlagsEXT flags[2] = {
         VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT,
         VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT
@@ -2034,7 +2036,6 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
 #endif
     VkResult U_ASSERT_ONLY err;
 
-#if defined(kws)
     // Just trying this out.
     VkDescriptorSetVariableDescriptorCountLayoutSupportEXT layout_count = {};
     layout_count.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT_EXT;
@@ -2049,11 +2050,9 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
         assert(0);
     }
     printf("%d\n", layout_count.maxVariableDescriptorCount);
-#endif
     err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout, NULL, &demo->desc_layout);
     assert(!err);
 
-#if defined(kws)
     // Define our debug descriptor set.
     const VkDescriptorSetLayoutBinding layout_bindings_debug[1] = {
         [0] =
@@ -2075,15 +2074,12 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
 
     err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout_debug, NULL, &demo->desc_layout_debug);
     assert(!err);
-#endif
 
     VkDescriptorSetLayout layouts[2];
     int num_layouts = 1;
     layouts[0] = demo->desc_layout;
-#if defined(kws)
     layouts[1] = demo->desc_layout_debug;
     num_layouts = 2;
-#endif
     const VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = NULL,
@@ -2094,7 +2090,7 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
     err = vkCreatePipelineLayout(demo->device, &pPipelineLayoutCreateInfo, NULL, &demo->pipeline_layout);
     assert(!err);
 }
-#if 0
+#else
 static void demo_prepare_descriptor_layout(struct demo *demo) {
     const VkDescriptorSetLayoutBinding layout_bindings[2] = {
         [0] =
