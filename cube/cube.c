@@ -2374,7 +2374,7 @@ static void demo_prepare_descriptor_pool(struct demo *demo) {
             },
         [1] =
             {
-                .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                 .descriptorCount = demo->swapchainImageCount * DEMO_TEXTURE_COUNT,
             },
     };
