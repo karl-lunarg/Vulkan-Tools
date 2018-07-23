@@ -857,6 +857,7 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
                                                         .dstQueueFamilyIndex = demo->present_queue_family_index,
                                                         .image = demo->swapchain_image_resources[demo->current_buffer].image,
                                                         .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+
         vkCmdPipelineBarrier(cmd_buf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0,
                              NULL, 1, &image_ownership_barrier);
     }
@@ -1992,6 +1993,7 @@ void demo_prepare_debug_data_buffers(struct demo *demo) {
 }
 #endif
 
+#if defined(kws)
 static void demo_prepare_descriptor_layout(struct demo *demo) {
     const VkDescriptorSetLayoutBinding layout_bindings[3] = {
         [0] =
@@ -2026,7 +2028,7 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
         .bindingCount = 3,
         .pBindings = layout_bindings,
     };
-#if defined(kws) && defined(USE_DESCRIPTOR_INDEXING_EXTENSION)
+#if defined(USE_DESCRIPTOR_INDEXING_EXTENSION)
     const VkDescriptorBindingFlagsEXT flags[2] = {
         VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT,
         VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT
@@ -2042,7 +2044,6 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
 #endif
     VkResult U_ASSERT_ONLY err;
 
-#if defined(kws)
     // Just trying this out.
     VkDescriptorSetVariableDescriptorCountLayoutSupportEXT layout_count = {};
     layout_count.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT_EXT;
@@ -2057,11 +2058,9 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
         assert(0);
     }
     printf("%d\n", layout_count.maxVariableDescriptorCount);
-#endif
     err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout, NULL, &demo->desc_layout);
     assert(!err);
 
-#if defined(kws)
     // Define our debug descriptor set.
     const VkDescriptorSetLayoutBinding layout_bindings_debug[1] = {
         [0] =
@@ -2083,15 +2082,12 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
 
     err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout_debug, NULL, &demo->desc_layout_debug);
     assert(!err);
-#endif
 
     VkDescriptorSetLayout layouts[2];
     int num_layouts = 1;
     layouts[0] = demo->desc_layout;
-#if defined(kws)
     layouts[1] = demo->desc_layout_debug;
     num_layouts = 2;
-#endif
     const VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = NULL,
@@ -2102,7 +2098,7 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
     err = vkCreatePipelineLayout(demo->device, &pPipelineLayoutCreateInfo, NULL, &demo->pipeline_layout);
     assert(!err);
 }
-#if 0
+#else
 static void demo_prepare_descriptor_layout(struct demo *demo) {
     const VkDescriptorSetLayoutBinding layout_bindings[2] = {
         [0] =
@@ -2365,14 +2361,20 @@ static void demo_prepare_pipeline(struct demo *demo) {
     vkDestroyShaderModule(demo->device, demo->vert_shader_module, NULL);
 }
 
+#if defined(kws)
 static void demo_prepare_descriptor_pool(struct demo *demo) {
-    const VkDescriptorPoolSize type_counts[2] = {
+    const VkDescriptorPoolSize type_counts[3] = {
         [0] =
             {
                 .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = demo->swapchainImageCount,
             },
         [1] =
+            {
+                .type = VK_DESCRIPTOR_TYPE_SAMPLER,
+                .descriptorCount = demo->swapchainImageCount,
+            },
+        [2] =
             {
                 .type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                 .descriptorCount = demo->swapchainImageCount * DEMO_TEXTURE_COUNT,
@@ -2382,14 +2384,13 @@ static void demo_prepare_descriptor_pool(struct demo *demo) {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .pNext = NULL,
         .maxSets = demo->swapchainImageCount,
-        .poolSizeCount = 2,
+        .poolSizeCount = 3,
         .pPoolSizes = type_counts,
     };
     VkResult U_ASSERT_ONLY err;
 
     err = vkCreateDescriptorPool(demo->device, &descriptor_pool, NULL, &demo->desc_pool);
     assert(!err);
-#if defined(kws)
     {
         const VkDescriptorPoolSize type_counts[1] = {
             [0] =
@@ -2410,9 +2411,35 @@ static void demo_prepare_descriptor_pool(struct demo *demo) {
         err = vkCreateDescriptorPool(demo->device, &descriptor_pool, NULL, &demo->desc_pool_debug);
         assert(!err);
     }
-#endif
 }
+#else
+static void demo_prepare_descriptor_pool(struct demo *demo) {
+    const VkDescriptorPoolSize type_counts[2] = {
+        [0] =
+            {
+                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = demo->swapchainImageCount,
+            },
+        [1] =
+            {
+                .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = demo->swapchainImageCount * DEMO_TEXTURE_COUNT,
+            },
+    };
+    const VkDescriptorPoolCreateInfo descriptor_pool = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .pNext = NULL,
+        .maxSets = demo->swapchainImageCount,
+        .poolSizeCount = 2,
+        .pPoolSizes = type_counts,
+    };
+    VkResult U_ASSERT_ONLY err;
 
+    err = vkCreateDescriptorPool(demo->device, &descriptor_pool, NULL, &demo->desc_pool);
+    assert(!err);
+}
+#endif
+#if defined(kws)
 static void demo_prepare_descriptor_set(struct demo *demo) {
     VkDescriptorImageInfo tex_descs[DEMO_TEXTURE_COUNT];
     VkWriteDescriptorSet writes[3];
@@ -2423,7 +2450,6 @@ static void demo_prepare_descriptor_set(struct demo *demo) {
                                               .descriptorPool = demo->desc_pool,
                                               .descriptorSetCount = 1,
                                               .pSetLayouts = &demo->desc_layout};
-
     VkDescriptorBufferInfo buffer_info;
     buffer_info.offset = 0;
     buffer_info.range = sizeof(struct vktexcube_vs_uniform);
@@ -2467,7 +2493,6 @@ static void demo_prepare_descriptor_set(struct demo *demo) {
         vkUpdateDescriptorSets(demo->device, 3, writes, 0, NULL);
     }
 
-#if defined(kws)
     {
         VkDescriptorSetAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
                                                   .pNext = NULL,
@@ -2494,8 +2519,53 @@ static void demo_prepare_descriptor_set(struct demo *demo) {
             vkUpdateDescriptorSets(demo->device, 1, writes, 0, NULL);
         }
     }
-#endif
 }
+#else
+static void demo_prepare_descriptor_set(struct demo *demo) {
+    VkDescriptorImageInfo tex_descs[DEMO_TEXTURE_COUNT];
+    VkWriteDescriptorSet writes[2];
+    VkResult U_ASSERT_ONLY err;
+
+    VkDescriptorSetAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                                              .pNext = NULL,
+                                              .descriptorPool = demo->desc_pool,
+                                              .descriptorSetCount = 1,
+                                              .pSetLayouts = &demo->desc_layout};
+
+    VkDescriptorBufferInfo buffer_info;
+    buffer_info.offset = 0;
+    buffer_info.range = sizeof(struct vktexcube_vs_uniform);
+
+    memset(&tex_descs, 0, sizeof(tex_descs));
+    for (unsigned int i = 0; i < DEMO_TEXTURE_COUNT; i++) {
+        tex_descs[i].sampler = demo->textures[i].sampler;
+        tex_descs[i].imageView = demo->textures[i].view;
+        tex_descs[i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    }
+
+    memset(&writes, 0, sizeof(writes));
+
+    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[0].descriptorCount = 1;
+    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[0].pBufferInfo = &buffer_info;
+
+    writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[1].dstBinding = 1;
+    writes[1].descriptorCount = DEMO_TEXTURE_COUNT;
+    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writes[1].pImageInfo = tex_descs;
+
+    for (unsigned int i = 0; i < demo->swapchainImageCount; i++) {
+        err = vkAllocateDescriptorSets(demo->device, &alloc_info, &demo->swapchain_image_resources[i].descriptor_set);
+        assert(!err);
+        buffer_info.buffer = demo->swapchain_image_resources[i].uniform_buffer;
+        writes[0].dstSet = demo->swapchain_image_resources[i].descriptor_set;
+        writes[1].dstSet = demo->swapchain_image_resources[i].descriptor_set;
+        vkUpdateDescriptorSets(demo->device, 2, writes, 0, NULL);
+    }
+}
+#endif
 
 static void demo_prepare_framebuffers(struct demo *demo) {
     VkImageView attachments[2];
