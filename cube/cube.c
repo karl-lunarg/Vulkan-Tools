@@ -425,9 +425,13 @@ struct demo {
         VkImageView view;
     } depth;
 
+#if defined(kws)
+    struct texture_object texture;
+    struct texture_object staging_textures[DEMO_TEXTURE_COUNT];
+#else
     struct texture_object textures[DEMO_TEXTURE_COUNT];
     struct texture_object staging_texture;
-
+#endif
     VkCommandBuffer cmd;  // Buffer for initialization commands
     VkPipelineLayout pipeline_layout;
     VkDescriptorSetLayout desc_layout;
@@ -675,7 +679,7 @@ static void demo_flush_init_cmd(struct demo *demo) {
 
 static void demo_set_image_layout(struct demo *demo, VkImage image, VkImageAspectFlags aspectMask, VkImageLayout old_image_layout,
                                   VkImageLayout new_image_layout, VkAccessFlagBits srcAccessMask, VkPipelineStageFlags src_stages,
-                                  VkPipelineStageFlags dest_stages) {
+                                  VkPipelineStageFlags dest_stages, int layer, int count) {
     assert(demo->cmd);
 
     VkImageMemoryBarrier image_memory_barrier = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -687,7 +691,7 @@ static void demo_set_image_layout(struct demo *demo, VkImage image, VkImageAspec
                                                  .oldLayout = old_image_layout,
                                                  .newLayout = new_image_layout,
                                                  .image = image,
-                                                 .subresourceRange = {aspectMask, 0, 1, 0, 1}};
+                                                 .subresourceRange = {aspectMask, 0, 1, layer, count}};
 
     switch (new_image_layout) {
         case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
@@ -1544,8 +1548,8 @@ bool loadTexture(const char *filename, uint8_t *rgba_data, VkSubresourceLayout *
         return true;
     }
     else if (strcmp(filename, "red") == 0) {
-        *width = 4;
-        *height = 4;
+        *width = 256;
+        *height = 256;
         if (rgba_data == NULL) {
             return true;
         }
@@ -1563,8 +1567,8 @@ bool loadTexture(const char *filename, uint8_t *rgba_data, VkSubresourceLayout *
         return true;
     }
     else if (strcmp(filename, "green") == 0) {
-        *width = 4;
-        *height = 4;
+        *width = 256;
+        *height = 256;
         if (rgba_data == NULL) {
             return true;
         }
@@ -1582,8 +1586,8 @@ bool loadTexture(const char *filename, uint8_t *rgba_data, VkSubresourceLayout *
         return true;
     }
     else if (strcmp(filename, "blue") == 0) {
-        *width = 4;
-        *height = 4;
+        *width = 256;
+        *height = 256;
         if (rgba_data == NULL) {
             return true;
         }
@@ -1601,8 +1605,8 @@ bool loadTexture(const char *filename, uint8_t *rgba_data, VkSubresourceLayout *
         return true;
     }
     else if (strcmp(filename, "magenta") == 0) {
-        *width = 4;
-        *height = 4;
+        *width = 256;
+        *height = 256;
         if (rgba_data == NULL) {
             return true;
         }
@@ -1620,8 +1624,8 @@ bool loadTexture(const char *filename, uint8_t *rgba_data, VkSubresourceLayout *
         return true;
     }
     else if (strcmp(filename, "cyan") == 0) {
-        *width = 4;
-        *height = 4;
+        *width = 256;
+        *height = 256;
         if (rgba_data == NULL) {
             return true;
         }
@@ -1679,8 +1683,60 @@ bool loadTexture(const char *filename, uint8_t *rgba_data, VkSubresourceLayout *
 }
 #endif
 
-static void demo_prepare_texture_image(struct demo *demo, const char *filename, struct texture_object *tex_obj,
-                                       VkImageTiling tiling, VkImageUsageFlags usage, VkFlags required_props) {
+#if defined(kws)
+static void demo_prepare_texture_array_image(struct demo *demo, struct texture_object *tex_obj,
+                                             VkImageTiling tiling, VkImageUsageFlags usage, VkFlags required_props) {
+    const VkFormat tex_format = VK_FORMAT_R8G8B8A8_UNORM;
+    int32_t tex_width = 256;
+    int32_t tex_height = 256;
+    VkResult U_ASSERT_ONLY err;
+    bool U_ASSERT_ONLY pass;
+
+    tex_obj->tex_width = 256;
+    tex_obj->tex_height = 256;
+
+    const VkImageCreateInfo image_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = NULL,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = tex_format,
+        .extent = {tex_width, tex_height, 1},
+        .mipLevels = 1,
+        .arrayLayers = DEMO_TEXTURE_COUNT,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = tiling,
+        .usage = usage,
+        .flags = 0,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    VkMemoryRequirements mem_reqs;
+
+    err = vkCreateImage(demo->device, &image_create_info, NULL, &tex_obj->image);
+    assert(!err);
+
+    vkGetImageMemoryRequirements(demo->device, tex_obj->image, &mem_reqs);
+
+    tex_obj->mem_alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    tex_obj->mem_alloc.pNext = NULL;
+    tex_obj->mem_alloc.allocationSize = mem_reqs.size;
+    tex_obj->mem_alloc.memoryTypeIndex = 0;
+
+    pass = memory_type_from_properties(demo, mem_reqs.memoryTypeBits, required_props, &tex_obj->mem_alloc.memoryTypeIndex);
+    assert(pass);
+
+    /* allocate memory */
+    err = vkAllocateMemory(demo->device, &tex_obj->mem_alloc, NULL, &(tex_obj->mem));
+    assert(!err);
+
+    /* bind memory */
+    err = vkBindImageMemory(demo->device, tex_obj->image, tex_obj->mem, 0);
+    assert(!err);
+
+    tex_obj->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+}
+static void demo_prepare_staging_texture(struct demo *demo, const char *filename, struct texture_object *tex_obj,
+                                         VkImageTiling tiling, VkImageUsageFlags usage, VkFlags required_props) {
     const VkFormat tex_format = VK_FORMAT_R8G8B8A8_UNORM;
     int32_t tex_width;
     int32_t tex_height;
@@ -1755,13 +1811,188 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename, 
 
     tex_obj->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 }
+#else
+static void demo_prepare_texture_image(struct demo *demo, const char *filename, struct texture_object *tex_obj,
+                                             VkImageTiling tiling, VkImageUsageFlags usage, VkFlags required_props) {
+    const VkFormat tex_format = VK_FORMAT_R8G8B8A8_UNORM;
+    int32_t tex_width;
+    int32_t tex_height;
+    VkResult U_ASSERT_ONLY err;
+    bool U_ASSERT_ONLY pass;
 
+    if (!loadTexture(filename, NULL, NULL, &tex_width, &tex_height)) {
+        ERR_EXIT("Failed to load textures", "Load Texture Failure");
+    }
+
+    tex_obj->tex_width = tex_width;
+    tex_obj->tex_height = tex_height;
+
+    const VkImageCreateInfo image_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = NULL,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = tex_format,
+        .extent = {tex_width, tex_height, 1},
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = tiling,
+        .usage = usage,
+        .flags = 0,
+        .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
+    };
+
+    VkMemoryRequirements mem_reqs;
+
+    err = vkCreateImage(demo->device, &image_create_info, NULL, &tex_obj->image);
+    assert(!err);
+
+    vkGetImageMemoryRequirements(demo->device, tex_obj->image, &mem_reqs);
+
+    tex_obj->mem_alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    tex_obj->mem_alloc.pNext = NULL;
+    tex_obj->mem_alloc.allocationSize = mem_reqs.size;
+    tex_obj->mem_alloc.memoryTypeIndex = 0;
+
+    pass = memory_type_from_properties(demo, mem_reqs.memoryTypeBits, required_props, &tex_obj->mem_alloc.memoryTypeIndex);
+    assert(pass);
+
+    /* allocate memory */
+    err = vkAllocateMemory(demo->device, &tex_obj->mem_alloc, NULL, &(tex_obj->mem));
+    assert(!err);
+
+    /* bind memory */
+    err = vkBindImageMemory(demo->device, tex_obj->image, tex_obj->mem, 0);
+    assert(!err);
+
+    if (required_props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+        const VkImageSubresource subres = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = 0,
+            .arrayLayer = 0,
+        };
+        VkSubresourceLayout layout;
+        void *data;
+
+        vkGetImageSubresourceLayout(demo->device, tex_obj->image, &subres, &layout);
+
+        err = vkMapMemory(demo->device, tex_obj->mem, 0, tex_obj->mem_alloc.allocationSize, 0, &data);
+        assert(!err);
+
+        if (!loadTexture(filename, data, &layout, &tex_width, &tex_height)) {
+            fprintf(stderr, "Error loading texture: %s\n", filename);
+        }
+
+        vkUnmapMemory(demo->device, tex_obj->mem);
+    }
+
+    tex_obj->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+}
+#endif
 static void demo_destroy_texture_image(struct demo *demo, struct texture_object *tex_objs) {
     /* clean up staging resources */
     vkFreeMemory(demo->device, tex_objs->mem, NULL);
     vkDestroyImage(demo->device, tex_objs->image, NULL);
 }
 
+#if defined(kws)
+static void demo_prepare_textures(struct demo *demo) {
+    const VkFormat tex_format = VK_FORMAT_R8G8B8A8_UNORM;
+    VkFormatProperties props;
+    VkResult U_ASSERT_ONLY err;
+    uint32_t i;
+
+    vkGetPhysicalDeviceFormatProperties(demo->gpu, tex_format, &props);
+
+    VkImageFormatProperties image_props;
+    vkGetPhysicalDeviceImageFormatProperties(demo->gpu, tex_format, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL,
+                                             VK_IMAGE_USAGE_SAMPLED_BIT, 0, &image_props);
+
+    demo_prepare_texture_array_image(demo, &demo->texture, VK_IMAGE_TILING_OPTIMAL,
+                                     (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT),
+                                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    for (i = 0; i < DEMO_TEXTURE_COUNT; i++) {
+        if (props.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) {
+            /* Must use staging buffer to copy linear texture to optimized */
+
+            demo_set_image_layout(demo, demo->texture.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                VK_PIPELINE_STAGE_TRANSFER_BIT, i, 1);
+            memset(&demo->staging_textures[i], 0, sizeof(demo->staging_textures[i]));
+            demo_prepare_staging_texture(demo, tex_files[i], &demo->staging_textures[i], VK_IMAGE_TILING_LINEAR,
+                                         VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+            demo_set_image_layout(demo, demo->staging_textures[i].image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_PREINITIALIZED,
+                                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                  VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1);
+
+            VkImageCopy copy_region = {
+                .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                .srcOffset = {0, 0, 0},
+                .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, i, 1},
+                .dstOffset = {0, 0, 0},
+                .extent = {demo->staging_textures[i].tex_width, demo->staging_textures[i].tex_height, 1},
+            };
+            vkCmdCopyImage(demo->cmd, demo->staging_textures[i].image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, demo->texture.image,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+
+        } else {
+            /* Can't support VK_FORMAT_R8G8B8A8_UNORM !? */
+            assert(!"No support for R8G8B8A8_UNORM as texture image format");
+        }
+    }
+    demo_set_image_layout(demo, demo->texture.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                          demo->texture.imageLayout, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, DEMO_TEXTURE_COUNT);
+
+    const VkSamplerCreateInfo sampler = {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .pNext = NULL,
+        .magFilter = VK_FILTER_NEAREST,
+        .minFilter = VK_FILTER_NEAREST,
+        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .mipLodBias = 0.0f,
+        .anisotropyEnable = VK_FALSE,
+        .maxAnisotropy = 1,
+        .compareOp = VK_COMPARE_OP_NEVER,
+        .minLod = 0.0f,
+        .maxLod = 0.0f,
+        .borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+        .unnormalizedCoordinates = VK_FALSE,
+    };
+
+    VkImageViewCreateInfo view = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext = NULL,
+        .image = VK_NULL_HANDLE,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+        .format = tex_format,
+        .components =
+            {
+                VK_COMPONENT_SWIZZLE_R,
+                VK_COMPONENT_SWIZZLE_G,
+                VK_COMPONENT_SWIZZLE_B,
+                VK_COMPONENT_SWIZZLE_A,
+            },
+        .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, DEMO_TEXTURE_COUNT},
+        .flags = 0,
+    };
+
+    /* create sampler */
+    err = vkCreateSampler(demo->device, &sampler, NULL, &demo->texture.sampler);
+    assert(!err);
+
+    /* create image view */
+    view.image = demo->texture.image;
+    err = vkCreateImageView(demo->device, &view, NULL, &demo->texture.view);
+    assert(!err);
+}
+#else
 static void demo_prepare_textures(struct demo *demo) {
     const VkFormat tex_format = VK_FORMAT_R8G8B8A8_UNORM;
     VkFormatProperties props;
@@ -1867,6 +2098,7 @@ static void demo_prepare_textures(struct demo *demo) {
         assert(!err);
     }
 }
+#endif
 
 void demo_prepare_cube_data_buffers(struct demo *demo) {
     VkBufferCreateInfo buf_info;
@@ -2418,8 +2650,8 @@ static void demo_prepare_descriptor_set(struct demo *demo) {
 
     memset(&tex_descs, 0, sizeof(tex_descs));
     for (unsigned int i = 0; i < DEMO_TEXTURE_COUNT; i++) {
-        tex_descs[i].sampler = demo->textures[i].sampler;
-        tex_descs[i].imageView = demo->textures[i].view;
+        tex_descs[i].sampler = demo->texture.sampler;
+        tex_descs[i].imageView = demo->texture.view;
         tex_descs[i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     }
 
@@ -2592,8 +2824,10 @@ static void demo_prepare(struct demo *demo) {
      * that need to be flushed before beginning the render loop.
      */
     demo_flush_init_cmd(demo);
-    if (demo->staging_texture.image) {
-        demo_destroy_texture_image(demo, &demo->staging_texture);
+    for (unsigned int i = 0 ; i < DEMO_TEXTURE_COUNT; i++) {
+        if (demo->staging_textures[i].image) {
+            demo_destroy_texture_image(demo, &demo->staging_textures[i]);
+        }
     }
 
     demo->current_buffer = 0;
@@ -2636,12 +2870,11 @@ static void demo_cleanup(struct demo *demo) {
         vkDestroyDescriptorSetLayout(demo->device, demo->desc_layout_debug, NULL);
 #endif
 
-        for (i = 0; i < DEMO_TEXTURE_COUNT; i++) {
-            vkDestroyImageView(demo->device, demo->textures[i].view, NULL);
-            vkDestroyImage(demo->device, demo->textures[i].image, NULL);
-            vkFreeMemory(demo->device, demo->textures[i].mem, NULL);
-            vkDestroySampler(demo->device, demo->textures[i].sampler, NULL);
-        }
+        vkDestroyImageView(demo->device, demo->texture.view, NULL);
+        vkDestroyImage(demo->device, demo->texture.image, NULL);
+        vkFreeMemory(demo->device, demo->texture.mem, NULL);
+        vkDestroySampler(demo->device, demo->texture.sampler, NULL);
+
         demo->fpDestroySwapchainKHR(demo->device, demo->swapchain, NULL);
 
         vkDestroyImageView(demo->device, demo->depth.view, NULL);
@@ -2730,11 +2963,11 @@ static void demo_resize(struct demo *demo) {
     vkDestroyDescriptorSetLayout(demo->device, demo->desc_layout_debug, NULL);
 #endif
 
-    for (i = 0; i < DEMO_TEXTURE_COUNT; i++) {
-        vkDestroyImageView(demo->device, demo->textures[i].view, NULL);
-        vkDestroyImage(demo->device, demo->textures[i].image, NULL);
-        vkFreeMemory(demo->device, demo->textures[i].mem, NULL);
-        vkDestroySampler(demo->device, demo->textures[i].sampler, NULL);
+    for (i = 0; i < 1; i++) {
+        vkDestroyImageView(demo->device, demo->texture.view, NULL);
+        vkDestroyImage(demo->device, demo->texture.image, NULL);
+        vkFreeMemory(demo->device, demo->texture.mem, NULL);
+        vkDestroySampler(demo->device, demo->texture.sampler, NULL);
     }
 
     vkDestroyImageView(demo->device, demo->depth.view, NULL);
