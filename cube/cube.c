@@ -1991,7 +1991,6 @@ void demo_prepare_debug_data_buffers(struct demo *demo) {
 }
 #endif
 
-#if defined(kws)
 static void demo_prepare_descriptor_layout(struct demo *demo) {
     const VkDescriptorSetLayoutBinding layout_bindings[2] = {
         [0] =
@@ -2034,6 +2033,7 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
 #endif
     VkResult U_ASSERT_ONLY err;
 
+#if defined(kws)
     // Just trying this out.
     VkDescriptorSetVariableDescriptorCountLayoutSupportEXT layout_count = {};
     layout_count.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT_EXT;
@@ -2048,9 +2048,12 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
         assert(0);
     }
     printf("%d\n", layout_count.maxVariableDescriptorCount);
+#endif
+
     err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout, NULL, &demo->desc_layout);
     assert(!err);
 
+#if defined(kws)
     // Define our debug descriptor set.
     const VkDescriptorSetLayoutBinding layout_bindings_debug[1] = {
         [0] =
@@ -2070,7 +2073,9 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
         .pBindings = layout_bindings_debug,
     };
 
-#if defined(kws)
+    err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout_debug, NULL, &demo->desc_layout_debug);
+    assert(!err);
+
     const VkPushConstantRange pcr[1] = {
         [0] =
             {
@@ -2079,61 +2084,19 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
                 .size = 4,
             },
     };
-#endif
-
-    err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout_debug, NULL, &demo->desc_layout_debug);
-    assert(!err);
 
     VkDescriptorSetLayout layouts[2];
-    int num_layouts = 1;
     layouts[0] = demo->desc_layout;
     layouts[1] = demo->desc_layout_debug;
-    num_layouts = 2;
     const VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = NULL,
-        .setLayoutCount = num_layouts,
+        .setLayoutCount = 2,
         .pSetLayouts = layouts,
-#if defined(kws)
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = pcr
-#endif
     };
-
-    err = vkCreatePipelineLayout(demo->device, &pPipelineLayoutCreateInfo, NULL, &demo->pipeline_layout);
-    assert(!err);
-}
 #else
-static void demo_prepare_descriptor_layout(struct demo *demo) {
-    const VkDescriptorSetLayoutBinding layout_bindings[2] = {
-        [0] =
-            {
-                .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-                .pImmutableSamplers = NULL,
-            },
-        [1] =
-            {
-                .binding = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = DEMO_TEXTURE_COUNT,
-                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-                .pImmutableSamplers = NULL,
-            },
-    };
-    const VkDescriptorSetLayoutCreateInfo descriptor_layout = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = NULL,
-        .bindingCount = 2,
-        .pBindings = layout_bindings,
-    };
-    VkResult U_ASSERT_ONLY err;
-
-    err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout, NULL, &demo->desc_layout);
-    assert(!err);
-
     const VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = NULL,
@@ -2141,10 +2104,10 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
         .pSetLayouts = &demo->desc_layout,
     };
 
+#endif
     err = vkCreatePipelineLayout(demo->device, &pPipelineLayoutCreateInfo, NULL, &demo->pipeline_layout);
     assert(!err);
 }
-#endif
 
 static void demo_prepare_render_pass(struct demo *demo) {
     // The initial layout for the color and depth attachments will be LAYOUT_UNDEFINED
