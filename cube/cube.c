@@ -189,9 +189,6 @@ struct vktexcube_vs_uniform {
     float mvp[4][4];
     float position[12 * 3][4];
     float attr[12 * 3][4];
-#if defined(kws)
-    unsigned int texture_index[12 * 3][4];
-#endif
 };
 
 //--------------------------------------------------------------------------------------
@@ -829,7 +826,16 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
         demo->CmdBeginDebugUtilsLabelEXT(cmd_buf, &label);
     }
 
+#if defined(kws)
+    const unsigned int values[] = {0, 1, 2, 3, 4, 5};
+    for (unsigned int i = 0; i < 6; ++i) {
+        vkCmdPushConstants(cmd_buf, demo->pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                           0, 4, (const void*)(values+i));
+        vkCmdDraw(cmd_buf, 6, 1, i * 6, 0);
+    }
+#else
     vkCmdDraw(cmd_buf, 12 * 3, 1, 0, 0);
+#endif
     if (demo->validate) {
         demo->CmdEndDebugUtilsLabelEXT(cmd_buf);
     }
@@ -1892,14 +1898,6 @@ void demo_prepare_cube_data_buffers(struct demo *demo) {
         data.attr[i][1] = g_uv_buffer_data[2 * i + 1];
         data.attr[i][2] = 0;
         data.attr[i][3] = 0;
-#if defined(kws)
-        // because shaders index things with vec4 granularity, we need to match the stride.
-        // would be nice to figure out a way to index a "packed" int array.
-        data.texture_index[i][0] = i / 6;
-        data.texture_index[i][1] = 0;
-        data.texture_index[i][2] = 0;
-        data.texture_index[i][3] = 0;
-#endif
     }
 
     memset(&buf_info, 0, sizeof(buf_info));
@@ -2072,6 +2070,17 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
         .pBindings = layout_bindings_debug,
     };
 
+#if defined(kws)
+    const VkPushConstantRange pcr[1] = {
+        [0] =
+            {
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .offset = 0,
+                .size = 4,
+            },
+    };
+#endif
+
     err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout_debug, NULL, &demo->desc_layout_debug);
     assert(!err);
 
@@ -2085,6 +2094,10 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
         .pNext = NULL,
         .setLayoutCount = num_layouts,
         .pSetLayouts = layouts,
+#if defined(kws)
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = pcr
+#endif
     };
 
     err = vkCreatePipelineLayout(demo->device, &pPipelineLayoutCreateInfo, NULL, &demo->pipeline_layout);
