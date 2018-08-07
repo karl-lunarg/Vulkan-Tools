@@ -31,7 +31,6 @@ layout (set = 1, binding = 0) buffer debugBuffer_t
 
 layout (location = 0) in vec4 texcoord;
 layout (location = 1) in vec3 frag_pos;
-layout (location = 2) flat in uint tex_ind;
 layout (location = 0) out vec4 uFragColor;
 
 const vec3 lightDir= vec3(0.424, 0.566, 0.707);
@@ -41,7 +40,8 @@ void main() {
    vec3 dY = dFdy(frag_pos);
    vec3 normal = normalize(cross(dX,dY));
    float light = max(0.0, dot(lightDir, normal));
+   int tex_ind = int(gl_FragCoord.y / 10) % 6;
    uFragColor = light * texture(sampler2D(tex[tex_ind], samp), texcoord.xy);
-   uFragColor = uFragColor * debugBuffer.color[0];
-   atomicAdd(debugBuffer.count,1);
+   //uFragColor = uFragColor * debugBuffer.color[0];
+   //atomicAdd(debugBuffer.count,1);
 }

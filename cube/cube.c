@@ -3797,7 +3797,7 @@ static void demo_create_device(struct demo *demo) {
 
 #if defined(kws)
     VkPhysicalDeviceFeatures features = {};
-    features.fragmentStoresAndAtomics = VK_TRUE;
+    //features.fragmentStoresAndAtomics = VK_TRUE;
     // This one SHOULD be required, but the NVIDIA driver seems to work without it.
     features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
     device.pEnabledFeatures = &features;

@@ -30,12 +30,10 @@ layout(std140, binding = 0) uniform buf {
 
 layout (location = 0) out vec4 texcoord;
 layout (location = 1) out vec3 frag_pos;
-layout (location = 2) flat out uint tex_ind;
 
 void main() 
 {
    texcoord = ubuf.attr[gl_VertexIndex];
    gl_Position = ubuf.MVP * ubuf.position[gl_VertexIndex];
    frag_pos = gl_Position.xyz;
-   tex_ind = ubuf.tex_index[gl_VertexIndex];
 }
