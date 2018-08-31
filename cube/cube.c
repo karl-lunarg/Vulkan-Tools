@@ -3573,7 +3573,16 @@ static void demo_init_vk(struct demo *demo) {
         .enabledExtensionCount = demo->enabled_extension_count,
         .ppEnabledExtensionNames = (const char *const *)demo->extension_names,
     };
-
+#if defined(kwsOFF)
+    VkValidationCheckEXT checks[1] = {2};
+    VkValidationFlagsEXT flags = {
+        .sType = VK_STRUCTURE_TYPE_VALIDATION_FLAGS_EXT,
+        .pNext = inst_info.pNext,
+        .disabledValidationCheckCount = 1,
+        .pDisabledValidationChecks = checks,
+    };
+    inst_info.pNext = &flags;
+#endif
     /*
      * This is info for a temp callback to use during CreateInstance.
      * After the instance is created, we use the instance-based
@@ -3583,7 +3592,7 @@ static void demo_init_vk(struct demo *demo) {
     if (demo->validate) {
         // VK_EXT_debug_utils style
         dbg_messenger_create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-        dbg_messenger_create_info.pNext = NULL;
+        dbg_messenger_create_info.pNext = inst_info.pNext;
         dbg_messenger_create_info.flags = 0;
         dbg_messenger_create_info.messageSeverity =
             VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
