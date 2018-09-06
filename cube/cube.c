@@ -1954,6 +1954,15 @@ void demo_prepare_cube_data_buffers(struct demo *demo) {
 #endif
     }
 
+#if defined(kws)
+data.texture_index[30][0] = 6;
+data.texture_index[31][0] = 6;
+data.texture_index[32][0] = 6;
+data.texture_index[33][0] = 6;
+data.texture_index[34][0] = 6;
+data.texture_index[35][0] = 6;
+#endif
+
     memset(&buf_info, 0, sizeof(buf_info));
     buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buf_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
