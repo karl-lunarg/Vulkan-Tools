@@ -1103,9 +1103,9 @@ static void demo_draw(struct demo *demo) {
         err = vkMapMemory(demo->device, demo->swapchain_image_resources[demo->current_buffer].debug_memory,
             0, VK_WHOLE_SIZE, 0, (void **)&pData);
         assert(!err);
-        int* i = (int*)pData;
-        float* f = (float*)pData;
-        printf("%f %f %f %f  %d\n", f[0], f[1], f[2], f[3], i[4]);
+        //int* i = (int*)pData;
+        //float* f = (float*)pData;
+        //printf("%f %f %f %f  %d\n", f[0], f[1], f[2], f[3], i[4]);
         vkUnmapMemory(demo->device, demo->swapchain_image_resources[demo->current_buffer].debug_memory);
     }
 #endif
