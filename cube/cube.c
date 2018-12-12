@@ -2387,6 +2387,34 @@ static void demo_prepare_pipeline(struct demo *demo) {
     shaderStages[1].module = demo->frag_shader_module;
     shaderStages[1].pName = "main";
 
+#if defined(kws)
+    VkSpecializationInfo spec_info[2];
+    VkSpecializationMapEntry spec_map[2];
+    uint32_t vertex_spec_data[10] = {10,11,12,13,14,15,16,17,18,19};
+    uint32_t fragment_spec_data[10] = {20,21,22,23,24,25,26,27,28,29};
+
+    spec_map[0].constantID = 100;
+    spec_map[0].offset = 0;
+    spec_map[0].size = 2 * sizeof(uint32_t);
+
+    spec_map[1].constantID = 200;
+    spec_map[1].offset = 2 * sizeof(uint32_t);
+    spec_map[1].size = 8 * sizeof(uint32_t);
+
+    spec_info[0].mapEntryCount = 1;
+    spec_info[0].pMapEntries = &spec_map[0];
+    spec_info[0].dataSize = sizeof(vertex_spec_data);
+    spec_info[0].pData = vertex_spec_data;
+
+    spec_info[1].mapEntryCount = 1;
+    spec_info[1].pMapEntries = &spec_map[1];
+    spec_info[1].dataSize = sizeof(fragment_spec_data);
+    spec_info[1].pData = fragment_spec_data;
+
+    shaderStages[0].pSpecializationInfo = &spec_info[0];
+    shaderStages[1].pSpecializationInfo = &spec_info[1];
+#endif
+
     memset(&pipelineCache, 0, sizeof(pipelineCache));
     pipelineCache.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
 
