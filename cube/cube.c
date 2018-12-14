@@ -2110,7 +2110,7 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
     if (!layout_support.supported) {
         assert(0);
     }
-    printf("%d\n", layout_count.maxVariableDescriptorCount);
+    //printf("%d\n", layout_count.maxVariableDescriptorCount);
     err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout, NULL, &demo->desc_layout);
     assert(!err);
 
