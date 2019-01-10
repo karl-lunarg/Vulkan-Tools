@@ -2096,7 +2096,7 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
     descriptor_layout.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT,
 #endif
     VkResult U_ASSERT_ONLY err;
-
+#if 0
     // Just trying this out.
     VkDescriptorSetVariableDescriptorCountLayoutSupportEXT layout_count = {};
     layout_count.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT_EXT;
@@ -2111,6 +2111,7 @@ static void demo_prepare_descriptor_layout(struct demo *demo) {
         assert(0);
     }
     //printf("%d\n", layout_count.maxVariableDescriptorCount);
+#endif
     err = vkCreateDescriptorSetLayout(demo->device, &descriptor_layout, NULL, &demo->desc_layout);
     assert(!err);
 
@@ -2743,6 +2744,17 @@ static void demo_cleanup(struct demo *demo) {
             vkDestroyBuffer(demo->device, demo->swapchain_image_resources[i].uniform_buffer, NULL);
             vkFreeMemory(demo->device, demo->swapchain_image_resources[i].uniform_memory, NULL);
 #if defined(kws)
+            {
+                VkResult err;
+                void *pData;
+                int *p;
+                err = vkMapMemory(demo->device, demo->swapchain_image_resources[i].debug_memory, 0, VK_WHOLE_SIZE, 0,
+                                  (void **)&pData);
+                assert(!err);
+                p = (int *)pData;
+                printf("%d\n", p[4]);
+                vkUnmapMemory(demo->device, demo->swapchain_image_resources[i].debug_memory);
+            }
             vkDestroyBuffer(demo->device, demo->swapchain_image_resources[i].debug_buffer, NULL);
             vkFreeMemory(demo->device, demo->swapchain_image_resources[i].debug_memory, NULL);
 #endif

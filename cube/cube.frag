@@ -42,5 +42,6 @@ void main() {
    float light = max(0.0, dot(lightDir, normal));
    uFragColor = light * texture(tex[tex_ind], texcoord.xy);
    uFragColor = uFragColor * debugBuffer.color[0];
+   debugBuffer.count = 19;
    //atomicAdd(debugBuffer.count,1);
 }
