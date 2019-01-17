@@ -723,6 +723,7 @@ static void demo_set_image_layout(struct demo *demo, VkImage image, VkImageAspec
 
 static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
     VkDebugUtilsLabelEXT label;
+    static int cmd_buff_cnt = 0;
     memset(&label, 0, sizeof(label));
     const VkCommandBufferBeginInfo cmd_buf_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -752,12 +753,14 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
 
     if (demo->validate) {
         // Set a name for the command buffer
+        char buf[50];
+        sprintf(buf, "CubeDrawCommandBuf #%d", cmd_buff_cnt++);
         VkDebugUtilsObjectNameInfoEXT cmd_buf_name = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
             .pNext = NULL,
             .objectType = VK_OBJECT_TYPE_COMMAND_BUFFER,
             .objectHandle = (uint64_t)cmd_buf,
-            .pObjectName = "CubeDrawCommandBuf",
+            .pObjectName = buf,
         };
         demo->SetDebugUtilsObjectNameEXT(demo->device, &cmd_buf_name);
 
@@ -2289,6 +2292,17 @@ static void demo_prepare_vs(struct demo *demo) {
 #include "cube.vert.inc"
     };
     demo->vert_shader_module = demo_prepare_shader_module(demo, vs_code, sizeof(vs_code));
+
+    if (demo->validate) {
+        VkDebugUtilsObjectNameInfoEXT object_name = {
+            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+            .pNext = NULL,
+            .objectType = VK_OBJECT_TYPE_SHADER_MODULE,
+            .objectHandle = (uint64_t)demo->vert_shader_module,
+            .pObjectName = "Cube Vertex Shader",
+        };
+        demo->SetDebugUtilsObjectNameEXT(demo->device, &object_name);
+    }
 }
 
 static void demo_prepare_fs(struct demo *demo) {
@@ -2296,6 +2310,17 @@ static void demo_prepare_fs(struct demo *demo) {
 #include "cube.frag.inc"
     };
     demo->frag_shader_module = demo_prepare_shader_module(demo, fs_code, sizeof(fs_code));
+
+    if (demo->validate) {
+        VkDebugUtilsObjectNameInfoEXT object_name = {
+            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+            .pNext = NULL,
+            .objectType = VK_OBJECT_TYPE_SHADER_MODULE,
+            .objectHandle = (uint64_t)demo->frag_shader_module,
+            .pObjectName = "Cube Fragment Shader",
+        };
+        demo->SetDebugUtilsObjectNameEXT(demo->device, &object_name);
+    }
 }
 
 static void demo_prepare_pipeline(struct demo *demo) {
@@ -2438,6 +2463,21 @@ static void demo_prepare_pipeline(struct demo *demo) {
 
     err = vkCreateGraphicsPipelines(demo->device, demo->pipelineCache, 1, &pipeline, NULL, &demo->pipeline);
     assert(!err);
+
+    static int pipeline_cnt = 0;
+    if (demo->validate) {
+        char buf[50];
+        sprintf(buf, "Pipeline #%d", pipeline_cnt++);
+
+        VkDebugUtilsObjectNameInfoEXT object_name = {
+            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+            .pNext = NULL,
+            .objectType = VK_OBJECT_TYPE_PIPELINE,
+            .objectHandle = (uint64_t)demo->pipeline,
+            .pObjectName = buf,
+        };
+        demo->SetDebugUtilsObjectNameEXT(demo->device, &object_name);
+    }
 
     vkDestroyShaderModule(demo->device, demo->frag_shader_module, NULL);
     vkDestroyShaderModule(demo->device, demo->vert_shader_module, NULL);
