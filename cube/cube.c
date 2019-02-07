@@ -1106,9 +1106,11 @@ static void demo_draw(struct demo *demo) {
         err = vkMapMemory(demo->device, demo->swapchain_image_resources[demo->current_buffer].debug_memory,
             0, VK_WHOLE_SIZE, 0, (void **)&pData);
         assert(!err);
-        //int* i = (int*)pData;
-        //float* f = (float*)pData;
-        //printf("%f %f %f %f  %d\n", f[0], f[1], f[2], f[3], i[4]);
+        uint32_t* words = (uint32_t*)pData;
+        if (words[0])
+            for(int k = 0; k <11; ++k)
+                printf("%d: %u %X %u %u\n", k, words[0], words[k*3+1], words[k*3+2], words[k*3+3]);
+        words[0] = 0;
         vkUnmapMemory(demo->device, demo->swapchain_image_resources[demo->current_buffer].debug_memory);
     }
 #endif
@@ -2042,11 +2044,11 @@ void demo_prepare_debug_data_buffers(struct demo *demo) {
         memset(pData, 0x00, 1024);
         // The fragment shader multiplies the fragment color by these factors.
         // Just a way to test the "input" debug buffer.
-        float* f = (float*)pData;
-        f[0] = 1.0f; // red
-        f[1] = 1.0f;
-        f[2] = 1.0f;
-        f[3] = 1.0f; // alpha
+        //float* f = (float*)pData;
+        //f[0] = 1.0f; // red
+        //f[1] = 1.0f;
+        //f[2] = 1.0f;
+        //f[3] = 1.0f; // alpha
 
         vkUnmapMemory(demo->device, demo->swapchain_image_resources[i].debug_memory);
 
@@ -2791,8 +2793,8 @@ static void demo_cleanup(struct demo *demo) {
                 err = vkMapMemory(demo->device, demo->swapchain_image_resources[i].debug_memory, 0, VK_WHOLE_SIZE, 0,
                                   (void **)&pData);
                 assert(!err);
-                p = (int *)pData;
-                printf("%d\n", p[4]);
+                //p = (int *)pData;
+                //printf("%d\n", p[4]);
                 vkUnmapMemory(demo->device, demo->swapchain_image_resources[i].debug_memory);
             }
             vkDestroyBuffer(demo->device, demo->swapchain_image_resources[i].debug_buffer, NULL);

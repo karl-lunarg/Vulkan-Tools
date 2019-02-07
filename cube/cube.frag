@@ -24,8 +24,8 @@
 layout (set = 0, binding = 1) uniform sampler2D tex[6];
 layout (set = 1, binding = 0) buffer debugBuffer_t
 {
-    vec4 color[1];
-    int count;
+    uint count;
+    uint data[3 * 10];
 } debugBuffer;
 
 layout (location = 0) in vec4 texcoord;
@@ -41,7 +41,15 @@ void main() {
    vec3 normal = normalize(cross(dX,dY));
    float light = max(0.0, dot(lightDir, normal));
    uFragColor = light * texture(tex[tex_ind], texcoord.xy);
-   uFragColor = uFragColor * debugBuffer.color[0];
-   debugBuffer.count = 19;
-   //atomicAdd(debugBuffer.count,1);
+   if (tex_ind < 6) {
+       uFragColor = light * texture(tex[tex_ind], texcoord.xy);
+   } else {
+       uint start = atomicAdd(debugBuffer.count, 3);
+       if (start < 30) {
+           debugBuffer.data[start + 0] = 0xBAD00BAD;
+           debugBuffer.data[start + 1] = tex_ind;
+           debugBuffer.data[start + 2] = 6;
+       }
+       uFragColor = vec4(0);
+   }
 }
